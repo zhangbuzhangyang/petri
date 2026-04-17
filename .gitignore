@@ -11,3 +11,8 @@ wheels/
 
 # Environment files
 .env
+logs/
+snapshots/
+项目架构.md
+蓝图.md
+当前阶段.md
