@@ -11,13 +11,89 @@ class StateManager:
     """
     def __init__(self, world: WorldState):
         self.world = world
-    
-    def apply_state_deltas(self, deltas: Dict[str, Dict[str, Any]]):
+
+    def apply_state_deltas(self, deltas: Dict[str, Any]):
         """
         将规则引擎的判决书应用到权威世界状态上
         """
+        delta_type = deltas.get("type")
+
+        if delta_type == "market_trade":
+            self._apply_market_trade(deltas)
+        elif delta_type == "peer_trade":
+            self._apply_peer_trade(deltas)
+        elif delta_type == "eat":
+            self._apply_eat(deltas)
+        else:
+            self._apply_legacy_deltas(deltas)
+
+        logger.debug(f"应用状态变更: {delta_type}")
+
+    def _apply_market_trade(self, deltas: Dict[str, Any]):
+        agent = self.world.agents.get(deltas["from_agent"])
+        if not agent:
+            return
+
+        for item_id in deltas.get("offered_items", []):
+            if item_id == "GOLD":
+                agent.gold -= deltas.get("offered_item_count", 0)
+            elif item_id in agent.inventory:
+                agent.inventory.remove(item_id)
+                item = self.world.items.get(item_id)
+                if item:
+                    item.current_holder_id = None
+                    item.current_node_id = agent.current_node_id
+
+        for item_id in deltas.get("requested_items", []):
+            if item_id == "GOLD":
+                agent.gold += deltas.get("requested_item_count", 0)
+            elif item_id in self.world.items:
+                item = self.world.items[item_id]
+                agent.inventory.append(item_id)
+                item.current_holder_id = agent.id
+                item.current_node_id = None
+
+    def _apply_peer_trade(self, deltas: Dict[str, Any]):
+        from_agent = self.world.agents.get(deltas["from_agent"])
+        to_agent = self.world.agents.get(deltas["to_agent"])
+        if not from_agent or not to_agent:
+            return
+
+        for item_id in deltas.get("offered_items", []):
+            if item_id in from_agent.inventory:
+                from_agent.inventory.remove(item_id)
+                to_agent.inventory.append(item_id)
+                item = self.world.items.get(item_id)
+                if item:
+                    item.current_holder_id = to_agent.id
+
+        for item_id in deltas.get("requested_items", []):
+            if item_id in to_agent.inventory:
+                to_agent.inventory.remove(item_id)
+                from_agent.inventory.append(item_id)
+                item = self.world.items.get(item_id)
+                if item:
+                    item.current_holder_id = from_agent.id
+
+    def _apply_eat(self, deltas: Dict[str, Any]):
+        agent = self.world.agents.get(deltas["agent_id"])
+        if not agent:
+            return
+
+        item_id = deltas.get("item_id")
+        if item_id in agent.inventory:
+            agent.inventory.remove(item_id)
+
+        agent.hunger = max(0, agent.hunger - deltas.get("hunger_restore", 0))
+
+        if item_id in self.world.items:
+            item = self.world.items[item_id]
+            item.current_holder_id = None
+
+    def _apply_legacy_deltas(self, deltas: Dict[str, Dict[str, Any]]):
         for entity_id, changes in deltas.items():
-            # 寻找实体 (可能是 Agent，也可能是 Item)
+            if entity_id == "type":
+                continue
             entity = self.world.agents.get(entity_id) or self.world.items.get(entity_id)
             if not entity:
                 continue
@@ -25,21 +101,12 @@ class StateManager:
             for key, delta_value in changes.items():
                 current_value = getattr(entity, key)
 
-                # 智能应用逻辑
                 if isinstance(current_value, int) and isinstance(delta_value, int):
-                    # 如果 delta_value 是负数，做减法；如果是正数，直接覆盖
-                    # 这样可以支持 HP 直接设置（如设置新HP值）或者减少（如扣血）
                     if delta_value < 0:
                         setattr(entity, key, current_value + delta_value)
                     else:
-                        # 对于HP等属性，如果是正数增量（如饱腹度增加），做加法
-                        # 如果是绝对值设置，需要调用方传入负数增量
                         setattr(entity, key, delta_value)
                 elif isinstance(current_value, list) and isinstance(delta_value, list):
-                    # 如果是列表，做追加 (比如 inventory 追加物品)
                     current_value.extend(delta_value)
                 else:
-                    # 其他情况直接覆盖 (比如状态从 ALIVE 变成 DEAD)
                     setattr(entity, key, delta_value)
-
-        logger.debug(f"应用状态变更，涉及 {len(deltas)} 个实体")

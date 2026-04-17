@@ -79,9 +79,36 @@ class EventBroadcaster:
                     "agents": [agent_id for agent_id, agent in world.agents.items() if agent.current_node_id == nid]
                 } for nid, n in world.nodes.items()
             },
+            "markets": {
+                node_id: {
+                    "node_id": market.node_id,
+                    "name": market.name,
+                    "inventory": {
+                        item_id: {
+                            "price": item.price,
+                            "quantity": item.quantity
+                        } for item_id, item in market.inventory.items()
+                    }
+                } for node_id, market in world.markets.items()
+            },
             "timestamp": get_timestamp()
         })
         logger.debug("广播状态快照")
+
+    async def broadcast_agent_thinking(self, agent_id: str, agent_name: str, thinking_data: dict):
+        """
+        广播 Agent 思考过程（用于灵魂解剖台）
+        """
+        event = {
+            "type": "agent_thinking",
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "thinking": thinking_data,
+            "timestamp": get_timestamp()
+        }
+        logger.info(f"🔬 [SoulAutopsy] 广播 {agent_name} 的思考过程")
+        await self.event_queue.put(event)
+        logger.debug(f"广播 {agent_name} 的思考过程")
 
     async def broadcast_game_over(self):
         """

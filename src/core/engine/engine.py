@@ -40,18 +40,23 @@ class GameEngine:
 
         # 2. 收集所有活人的意图并依次结算
         alive_agents = [a for a in self.world.agents.values() if a.status == AgentStatus.ALIVE]
-        
+
         for agent in alive_agents:
             # 获取意图 (使用真实的 LLM 大脑)
             brain = self.brain_manager.get_brain(agent.id)
-            intent = brain.think(agent, self.world)
-            
+            result = brain.think(agent, self.world)
+
+            if isinstance(result, tuple):
+                intent, _ = result
+            else:
+                intent = result
+
             if not intent:
                 continue
 
             # 3. 规则引擎裁决
             judgement: Judgement = self.rule_engine.judge(intent, agent, self.world)
-            
+
             # 4. 控制台输出剧情 (上帝视角)
             if intent.action_type == ActionType.SPEAK:
                 logger.info(f"💬 [{agent.name}] 说: \"{intent.dialogue_content}\"")
@@ -62,10 +67,10 @@ class GameEngine:
             # 5. 应用状态变更 (核心物理法则生效时刻)
             if judgement.success and judgement.state_deltas:
                 self.state_manager.apply_state_deltas(judgement.state_deltas)
-            
+
             # 6. 为 Agent 添加记忆
             self.memory_integrator.add_memory(agent, intent, judgement)
-        
+
         # 打印当前世界快照
         self._print_world_snapshot()
 
@@ -85,18 +90,30 @@ class GameEngine:
 
         # 2. 收集所有活人的意图并依次结算
         alive_agents = [a for a in self.world.agents.values() if a.status == AgentStatus.ALIVE]
-        
+
         for agent in alive_agents:
             # 获取意图 (使用真实的 LLM 大脑)
             brain = self.brain_manager.get_brain(agent.id)
-            intent = brain.think(agent, self.world)
-            
+            result = brain.think(agent, self.world)
+
+            if isinstance(result, tuple):
+                intent, thinking_data = result
+            else:
+                intent = result
+                thinking_data = None
+
             if not intent:
                 continue
 
+            # 广播 Agent 思考过程（用于灵魂解剖台）
+            if thinking_data:
+                await self.event_broadcaster.broadcast_agent_thinking(
+                    agent.id, agent.name, thinking_data
+                )
+
             # 3. 规则引擎裁决
             judgement: Judgement = self.rule_engine.judge(intent, agent, self.world)
-            
+
             # 4. 广播事件给前端
             if intent.action_type == ActionType.SPEAK:
                 await self.event_broadcaster.broadcast_dialogue(agent, intent.dialogue_content)
@@ -106,10 +123,10 @@ class GameEngine:
             # 5. 应用状态变更 (核心物理法则生效时刻)
             if judgement.success and judgement.state_deltas:
                 self.state_manager.apply_state_deltas(judgement.state_deltas)
-            
+
             # 6. 为 Agent 添加记忆
             self.memory_integrator.add_memory(agent, intent, judgement)
-        
+
         # 7. 广播状态快照给前端
         await self.event_broadcaster.broadcast_state_snapshot(self.world)
 

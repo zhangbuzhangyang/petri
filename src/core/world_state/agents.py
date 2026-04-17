@@ -8,13 +8,16 @@ from src.core.world_state.enums import AgentStatus
 class AgentState(BaseModel):
     id: str = Field(..., description="全局唯一ID")
     name: str = Field(..., description="角色名")
-    
+
     # --- 物理层 (绝对真实，不可被 LLM 直接篡改) ---
     status: AgentStatus = AgentStatus.ALIVE
     current_node_id: str = Field(..., description="当前所在节点")
     hp: int = Field(100, ge=0, le=100)
     hunger: int = Field(0, ge=0, le=100, description="0为不饿，100为饿死边缘")
-    
+
+    # --- 经济层 ---
+    gold: int = Field(default=10, description="持有的金币数量")
+
     # --- 持有物 (引用关系，不是真把物品存这里) ---
     inventory: List[str] = Field(default_factory=list, description="持有的 Item ID 列表")
     

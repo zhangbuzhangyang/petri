@@ -14,6 +14,9 @@ app = FastAPI(title="Project Petri", description="AI Agent Simulation Platform")
 
 # 全局引擎实例
 engine = None
+# 时间控制状态
+tick_interval = 1.0  # 秒
+is_paused = False
 
 # 处理根路径，返回API信息
 @app.get("/")
@@ -23,7 +26,7 @@ async def read_root():
 # WebSocket 端点
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global engine
+    global engine, tick_interval, is_paused
 
     await websocket.accept()
     print("📡 WebSocket 连接已建立，等待客户端确认...")
@@ -37,6 +40,10 @@ async def websocket_endpoint(websocket: WebSocket):
             print("❌ 客户端未发送正确的开始消息")
             await websocket.close()
             return
+
+        # 重置时间控制状态
+        tick_interval = 1.0
+        is_paused = False
 
         # 初始化世界和引擎
         print("🌍 初始化世界和引擎...")
@@ -56,7 +63,49 @@ async def websocket_endpoint(websocket: WebSocket):
         # 开始游戏循环
         print("🎮 开始游戏循环...")
         tick_count = 0
+
         while True:
+            # 处理控制消息（暂停、加速等）
+            try:
+                control_message = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=0.1
+                )
+                msg_type = control_message.get("type")
+                if msg_type == "pause":
+                    is_paused = True
+                    print("⏸️ 游戏已暂停")
+                    await websocket.send_json({
+                        "type": "control",
+                        "action": "pause",
+                        "timestamp": get_timestamp()
+                    })
+                elif msg_type == "resume":
+                    is_paused = False
+                    print("▶️ 游戏已恢复")
+                    await websocket.send_json({
+                        "type": "control",
+                        "action": "resume",
+                        "timestamp": get_timestamp()
+                    })
+                elif msg_type == "speed":
+                    speed = control_message.get("speed", 1)
+                    tick_interval = 1.0 / speed
+                    print(f"⏩ 游戏速度: x{speed}")
+                    await websocket.send_json({
+                        "type": "control",
+                        "action": "speed",
+                        "speed": speed,
+                        "timestamp": get_timestamp()
+                    })
+            except asyncio.TimeoutError:
+                pass
+
+            # 如果暂停则继续等待
+            if is_paused:
+                await asyncio.sleep(0.1)
+                continue
+
             tick_count += 1
             print(f"\n🔄 运行 Tick {tick_count}")
 
@@ -83,8 +132,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
 
             # 等待一段时间再进行下一个 Tick
-            print("⏱️ 等待 1 秒...")
-            await asyncio.sleep(1)  # 1秒间隔
+            print(f"⏱️ 等待 {tick_interval} 秒...")
+            await asyncio.sleep(tick_interval)
 
     except WebSocketDisconnect:
         print("🔌 客户端断开连接")
@@ -94,4 +143,26 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    
+    # 配置 Uvicorn 支持优雅停机
+    config = uvicorn.Config(
+        app,
+        host="0.0.0.0",
+        port=9000,
+        graceful_shutdown_timeout=5,  # 最多等待5秒让现有请求完成
+        handle_signals=True  # 自动处理 SIGINT (Ctrl+C) 和 SIGTERM
+    )
+    server = uvicorn.Server(config)
+    
+    # 捕获键盘中断，强制退出
+    import signal
+    import sys
+    
+    def signal_handler(sig, frame):
+        print("\n🛑 收到停止信号，正在关闭服务...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    server.run()

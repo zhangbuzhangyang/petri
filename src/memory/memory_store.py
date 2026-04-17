@@ -56,7 +56,6 @@ class MemoryStore:
         if CHROMADB_AVAILABLE:
             try:
                 logger.info(f"正在初始化 ChromaDB，可能需要下载嵌入模型（all-MiniLM-L6-v2）...")
-                logger.info(f"模型下载路径: /Users/zhangqi/.cache/chroma/onnx_models/all-MiniLM-L6-v2/")
                 self.chroma_client = chromadb.PersistentClient(path="./snapshots/memory")
                 self.collection = self.chroma_client.get_or_create_collection(
                     name=f"agent_{agent_id}_memories"

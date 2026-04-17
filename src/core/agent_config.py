@@ -11,29 +11,25 @@ class AgentConfig(BaseModel):
     """
     Agent 配置类，包含 Agent 的基本信息和模型配置
     """
-    # 基本信息
     id: str = Field(..., description="Agent 唯一标识符")
     name: str = Field(..., description="Agent 名称")
     system_prompt_base: str = Field(..., description="Agent 基础人设提示词")
 
-    # 初始状态
     initial_node_id: str = Field(..., description="初始所在节点")
     initial_hp: int = Field(100, ge=0, le=100, description="初始生命值")
     initial_hunger: int = Field(0, ge=0, le=100, description="初始饥饿度")
     initial_inventory: list = Field(default_factory=list, description="初始背包物品")
+    initial_gold: int = Field(default=10, description="初始金币")
 
-    # 性格参数
     personality: Dict[str, float] = Field(
         default_factory=lambda: {"aggression": 0.5, "greed": 0.5, "social": 0.5},
         description="性格参数，0.0-1.0"
     )
 
-    # 模型配置
     model_name: str = Field("gpt-4o-mini", description="使用的模型名称")
     api_key: Optional[str] = Field(None, description="API 密钥")
     api_base: Optional[str] = Field(None, description="API 基础 URL")
 
-    # 行为配置
     temperature: float = Field(0.7, ge=0.0, le=1.0, description="模型温度参数")
     max_tokens: int = Field(200, description="最大生成 tokens")
 
@@ -70,10 +66,12 @@ class AgentConfigManager:
             initial_hunger=0,
             initial_inventory=[],
             personality={"aggression": 0.8, "greed": 0.9, "social": 0.2},
-            model_name=os.getenv("OMLX_MODEL_NAME", "Qwen3.5-9B-MLX-4bit"),  # 铁匠使用 OMLX 模型
+            model_name=os.getenv("OMLX_MODEL_NAME", "Qwen3.5-9B-MLX-4bit"),
             api_key=os.getenv("OMLX_API_KEY", "1234"),
             api_base=os.getenv("OMLX_API_BASE", "http://127.0.0.1:56788/v1"),
-            temperature=0.8
+            temperature=0.8,
+            model_type = "OMLX",
+            max_tokens=2000
         )
         self.add_config(blacksmith_config)
 
@@ -87,8 +85,9 @@ class AgentConfigManager:
             initial_hunger=0,
             initial_inventory=[],
             personality={"aggression": 0.2, "greed": 0.3, "social": 0.7},
-            model_name=os.getenv("MODEL_NAME", "gpt-4o-mini"),  # 农夫使用 gpt-4o-mini
-            api_base=os.getenv("OPENAI_API_BASE", ""),
+            model_name=os.getenv("VOLCANO_MODEL_NAME", "doubao-pro-1.5"),  # 农夫使用 火山引擎 模型
+            api_key=os.getenv("VOLCANO_API_KEY", "ark-e56a0023-b874-4a94-ab46-c0bda288f4a7-eb629"),
+            api_base=os.getenv("VOLCANO_API_BASE", "https://ark.cn-beijing.volces.com/api/v3"),
             temperature=0.6
         )
         self.add_config(farmer_config)
